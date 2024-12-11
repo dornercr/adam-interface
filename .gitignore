@@ -27,3 +27,6 @@ node_modules/.vite
 # Miscellaneous
 .DS_Store
 Thumbs.db
+
+public/
+public/
