@@ -1,12 +1,11 @@
-import React from 'react';
-import AdamInterface from './components/AdamInterface';
+import AdamInterface from './components/AdamInterface'
 
 function App() {
     return (
         <div>
             <AdamInterface />
         </div>
-    );
+    )
 }
 
-export default App;
+export default App

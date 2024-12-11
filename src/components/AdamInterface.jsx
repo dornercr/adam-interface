@@ -12,7 +12,6 @@ import {
 import Papa from 'papaparse';
 
 export default function AdamInterface() {
-    // State declarations
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [isFilterExpanded, setIsFilterExpanded] = useState(false);
     const [articles, setArticles] = useState([]);
@@ -22,10 +21,12 @@ export default function AdamInterface() {
     const [selectedLanguage, setSelectedLanguage] = useState('');
     const [searchTopic, setSearchTopic] = useState('');
     const [selectedIlrLevel, setSelectedIlrLevel] = useState('');
-    const [ilrLevels, setIlrLevels] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [lowRange, setLowRange] = useState('');
     const [highRange, setHighRange] = useState('');
+
+    // Define a fixed ILR levels array
+    const ilrLevels = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"];
 
     const resultsPerPage = 50;
 
@@ -34,19 +35,20 @@ export default function AdamInterface() {
         checkDarkModePreference();
     }, []);
 
-    // Load available languages from JSON
     const loadAvailableLanguages = async () => {
         try {
-            const response = await fetch('/data/available_files.json'); // Change as needed
+            console.log("Fetching available_files.json...");
+            const response = await fetch('/data/available_files.json');
             const availableFiles = await response.json();
+            console.log("Available files loaded:", availableFiles);
             const langs = Object.keys(availableFiles);
+            console.log("Languages found:", langs);
             setLanguages(langs);
         } catch (error) {
             console.error("Error loading languages:", error);
         }
     };
 
-    // Check and set dark mode from localStorage
     const checkDarkModePreference = () => {
         if (localStorage.getItem('darkMode') === 'true') {
             setIsDarkMode(true);
@@ -59,15 +61,16 @@ export default function AdamInterface() {
         localStorage.setItem('darkMode', newMode.toString());
     };
 
-    // Load language data from CSV files
     const loadLanguageData = async (language) => {
         if (!language) return;
 
         setIsLoading(true);
         try {
-            const response = await fetch('/data/available_files.json'); // Change as needed
+            console.log("Loading data for language:", language);
+            const response = await fetch('/data/available_files.json');
             const availableFiles = await response.json();
             const languageFiles = availableFiles[language];
+            console.log("Files for language:", languageFiles);
 
             if (!languageFiles || languageFiles.length === 0) {
                 throw new Error(`No files found for ${language}`);
@@ -75,31 +78,26 @@ export default function AdamInterface() {
 
             const results = await Promise.all(
                 languageFiles.map(async (csvFile) => {
+                    console.log("Fetching CSV file:", csvFile);
                     const resp = await fetch(`/data/${csvFile}`);
+                    console.log("CSV response status:", resp.status);
                     const text = await resp.text();
                     return new Promise((resolve) => {
                         Papa.parse(text, {
                             header: true,
-                            complete: (parsedResults) => resolve(parsedResults.data),
+                            complete: (parsedResults) => {
+                                console.log("Parsed CSV rows:", parsedResults.data.length);
+                                resolve(parsedResults.data);
+                            },
                         });
                     });
                 })
             );
 
             const allArticles = results.flat();
+            console.log("Total articles loaded:", allArticles.length);
             setArticles(allArticles);
-
-            // Populate ILR levels
-            const ilrSet = new Set(allArticles.map(a => a.ilr_quantized).filter(Boolean));
-            const ilrSorted = Array.from(ilrSet).sort((a,b) => parseInt(a)-parseInt(b));
-            setIlrLevels(ilrSorted.length > 0 ? ilrSorted : ['1','2','3','4','5']);
-
-            // Default ILR level (if available)
-            const defaultLevel = ilrSorted.includes('1') ? '1' : '';
-            setSelectedIlrLevel(defaultLevel);
-
-            // Perform initial search
-            searchArticles(allArticles, searchTopic, defaultLevel, lowRange, highRange);
+            searchArticles(allArticles, searchTopic, '1', lowRange, highRange);
         } catch (error) {
             console.error("Error loading data:", error);
         } finally {
@@ -107,7 +105,6 @@ export default function AdamInterface() {
         }
     };
 
-    // Filter articles based on the provided criteria
     const searchArticles = (
         articlesList = articles,
         topic = searchTopic,
@@ -119,7 +116,13 @@ export default function AdamInterface() {
             const titleMatch = article.title?.toLowerCase().includes(topic.toLowerCase());
             const summaryMatch = article.summary?.toLowerCase().includes(topic.toLowerCase());
             const translatedSummaryMatch = article.translated_summary?.toLowerCase().includes(topic.toLowerCase());
-            const ilrMatch = !ilr || article.ilr_quantized === ilr;
+
+            // Convert to numbers for comparison if needed
+            const ilrNum = ilr ? parseFloat(ilr) : null;
+            const articleIlrNum = article.ilr_quantized ? parseFloat(article.ilr_quantized) : null;
+
+            // If user selected an ILR, check if article's ILR matches
+            const ilrMatch = !ilrNum || (articleIlrNum === ilrNum);
 
             let rangeMatch = true;
             if (article.ilr_range && (low || high)) {
@@ -145,7 +148,6 @@ export default function AdamInterface() {
         setCurrentPage(1);
     };
 
-    // Change page for pagination
     const changePage = (delta) => {
         const newPage = currentPage + delta;
         const totalPages = Math.ceil(filteredArticles.length / resultsPerPage);
@@ -154,19 +156,19 @@ export default function AdamInterface() {
         }
     };
 
-    // Get articles for the current page
     const getCurrentPageArticles = () => {
         const startIndex = (currentPage - 1) * resultsPerPage;
         return filteredArticles.slice(startIndex, startIndex + resultsPerPage);
     };
 
-    // Render an individual article card, including translated summary and ILR range
     const renderArticleCard = (article) => {
-        const isRTL = /[\u0600-\u06FF]/.test(article.title || '') || /[\u0600-\u06FF]/.test(article.summary || '') || /[\u0600-\u06FF]/.test(article.translated_summary || '');
+        const isRTL = /[\u0600-\u06FF]/.test(article.title || '') ||
+            /[\u0600-\u06FF]/.test(article.summary || '') ||
+            /[\u0600-\u06FF]/.test(article.translated_summary || '');
+
         const isCJK = /[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]/.test(article.title || '');
 
         let ilrRangeDisplay = 'N/A';
-
         if (article.ilr_range && typeof article.ilr_range === 'string') {
             try {
                 const parsedRange = JSON.parse(article.ilr_range.replace(/'/g, '"'));
@@ -343,7 +345,7 @@ export default function AdamInterface() {
                                         </select>
                                     </div>
 
-                                    {/* ILR Level Select */}
+                                    {/* ILR Level Select (Now using fixed values) */}
                                     <div>
                                         <label
                                             className={`block mb-2 text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
